@@ -39,6 +39,7 @@ runs:
   using: "composite"
   steps:
     - name: Post to Discourse
+      if: github.repository == 'BluePilotDev/bluepilot'
       id: post
       shell: bash
       run: |
