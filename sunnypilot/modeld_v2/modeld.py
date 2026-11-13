@@ -378,6 +378,9 @@ def main(demo=False):
       model.PLANPLUS_CONTROL = params.get("PlanplusControl", return_default=True)
       camera_offset_helper.set_offset(params.get("CameraOffset", return_default=True))
     lat_delay = model.lat_delay + model.LAT_SMOOTH_SECONDS
+    # BluePilot: use the active model's smoothing after either Jetlink handover.
+    long_delay = CP.longitudinalActuatorDelay + model.LONG_SMOOTH_SECONDS
+    # End BluePilot
     if sm.updated["liveCalibration"] and sm.seen['roadCameraState'] and sm.seen['deviceState']:
       device_from_calib_euler = np.array(sm["liveCalibration"].rpyCalib, dtype=np.float32)
       dc = DEVICE_CAMERAS[(str(sm['deviceState'].deviceType), str(sm['roadCameraState'].sensor))]
@@ -412,6 +415,8 @@ def main(demo=False):
     inputs:dict[str, np.ndarray] = {
       model.desire_key: vec_desire,
       'traffic_convention': traffic_convention,
+      # BluePilot: required by Jetlink's external policy; legacy local models ignore it.
+      'action_t': np.array([lat_delay + DT_MDL, long_delay + DT_MDL], dtype=np.float32),
     }
 
     if 'lateral_control_params' in model.numpy_inputs:
