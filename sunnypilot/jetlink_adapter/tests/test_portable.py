@@ -89,7 +89,7 @@ class TestAdapter(unittest.TestCase):
       for attached in (False, True):
         for dropped in (False, True):
           received = []
-          model = SimpleNamespace(run=lambda *args: received.append(args[-1]))
+          model = SimpleNamespace(run=lambda *args, received=received: received.append(args[-1]))
           exec(code, {'model': model, 'bufs': {}, 'transforms': {}, 'inputs': {},
                       'jetlink_attached': attached, 'prepare_only': dropped})
           self.assertIs(received[0], None if attached else dropped)

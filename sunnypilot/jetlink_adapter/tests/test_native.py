@@ -7,6 +7,11 @@ from openpilot.sunnypilot import jetlink_adapter
 from openpilot.common.prefix import OpenpilotPrefix
 
 
+def _crash_owner(*_):
+  import os
+  os._exit(3)
+
+
 class TestNativeAdapter(unittest.TestCase):
   def setUp(self):
     self.enterContext(OpenpilotPrefix())
@@ -15,6 +20,22 @@ class TestNativeAdapter(unittest.TestCase):
     self.assertEqual(check_adapter(jetlink_adapter, heavy=(
       'numpy', 'capnp', 'zmq', 'openpilot.cereal', 'openpilot.common.params', 'openpilot.common.swaglog',
     )), [])
+
+  def test_owner_restarts_after_process_exit(self):
+    from openpilot.system.manager.process import RestartingPythonProcess
+    owner = RestartingPythonProcess('jetlink_test_owner', __name__, lambda *_: True)
+    owner.launcher = _crash_owner
+    try:
+      owner.start()
+      first_pid = owner.proc.pid
+      owner.proc.join(5)
+      self.assertEqual(owner.proc.exitcode, 3)
+      owner.start()
+      self.assertNotEqual(owner.proc.pid, first_pid)
+      owner.proc.join(5)
+      self.assertEqual(owner.proc.exitcode, 3)
+    finally:
+      owner.stop()
 
   def test_compiled_schema_and_parameter_library(self):
     from cereal import custom
