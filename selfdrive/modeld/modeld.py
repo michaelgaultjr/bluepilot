@@ -200,7 +200,10 @@ def main(demo=False):
 
   # messaging
   pm = PubMaster(["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP"])
-  sm = SubMaster(["deviceState", "carState", "roadCameraState", "liveCalibration", "driverMonitoringState", "carControl", "liveDelay"])
+  # BluePilot: share the frame reader with Jetlink; avoid exhausting msgq's reader slots.
+  sm = SubMaster(["deviceState", "carState", "roadCameraState", "liveCalibration", "driverMonitoringState", "carControl", "liveDelay", "carControlSP"])
+  jetlink_adapter.use_modeld_submaster(sm)
+  # End BluePilot
 
   publish_state = PublishState()
   params = Params()

@@ -175,6 +175,75 @@ class TestSelfdrivedIntegration(unittest.TestCase):
     self.assertNotIn('offer', self.sd.events_sp)
 
 
+class TestSharedControlReader(unittest.TestCase):
+  def setUp(self):
+    self.enterContext(patch.object(adapter, '_modeld_sm', None))
+    self.op = adapter.adapter()
+    self.op.__dict__['log'] = SimpleNamespace(exception=lambda *args: None)
+
+  def snapshot(self, cruise=False, mads=False):
+    class Snapshot(dict):
+      def all_alive(self, services):
+        return all(self.alive[s] for s in services)
+
+      def all_valid(self, services):
+        return all(self.valid[s] for s in services)
+
+      def update(self, *_):
+        raise AssertionError("Jetlink must not poll modeld's reader")
+
+    sm = Snapshot(carState=object(), carControl=SimpleNamespace(enabled=cruise),
+                  carControlSP=SimpleNamespace(mads=SimpleNamespace(enabled=mads)))
+    sm.alive = dict.fromkeys(self.op.IN_CONTROL_SERVICES, True)
+    sm.valid = dict.fromkeys(self.op.IN_CONTROL_SERVICES, True)
+    return sm
+
+  def test_unbound_reader_blocks_promotion_without_subscribing(self):
+    self.assertTrue(self.op.in_control())
+    self.assertIsNone(self.op._sm)
+
+  def test_shared_reader_preserves_cruise_and_paused_mads_gate(self):
+    for cruise, mads in ((False, False), (True, False), (False, True), (True, True)):
+      sm = self.snapshot(cruise, mads)
+      adapter.use_modeld_submaster(sm)
+      for _ in range(3):
+        self.assertEqual(self.op.in_control(), cruise or mads)
+      self.assertIsNone(self.op._sm)
+
+  def test_missing_stale_invalid_or_broken_input_blocks_promotion(self):
+    for service in self.op.IN_CONTROL_SERVICES:
+      for invalid in ('alive', 'valid'):
+        sm = self.snapshot()
+        getattr(sm, invalid)[service] = False
+        adapter.use_modeld_submaster(sm)
+        self.assertTrue(self.op.in_control())
+      sm = self.snapshot()
+      del sm.valid[service]
+      adapter.use_modeld_submaster(sm)
+      self.assertTrue(self.op.in_control())
+    adapter.use_modeld_submaster(object())
+    self.assertTrue(self.op.in_control())
+
+  def test_both_model_runners_bind_their_existing_reader(self):
+    for path in ('selfdrive/modeld/modeld.py', 'sunnypilot/modeld_v2/modeld.py'):
+      tree = ast.parse((ROOT / path).read_text(encoding='utf-8'))
+      main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'main')
+      binding = next(i for i, n in enumerate(main.body) if isinstance(n, ast.Expr) and
+                     isinstance(n.value, ast.Call) and ast.unparse(n.value.func) == 'jetlink_adapter.use_modeld_submaster')
+      setup = main.body[binding - 1:binding + 1]
+      constructed = []
+      def make_reader(services, constructed=constructed):
+        self.assertTrue(set(self.op.IN_CONTROL_SERVICES) <= set(services))
+        sm = self.snapshot()
+        constructed.append(sm)
+        return sm
+      exec(compile(ast.Module(body=setup, type_ignores=[]), path, 'exec'),
+           {'SubMaster': make_reader, 'jetlink_adapter': adapter})
+      self.assertEqual(len(constructed), 1)
+      self.assertIs(adapter._modeld_sm, constructed[0])
+      self.assertFalse(self.op.in_control())
+
+
 class TestStatusDisplay(unittest.TestCase):
   def snapshot(self, **changes):
     from jetlink.openpilot.status import Status

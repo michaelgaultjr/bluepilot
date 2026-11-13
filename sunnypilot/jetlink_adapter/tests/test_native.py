@@ -16,6 +16,35 @@ class TestNativeAdapter(unittest.TestCase):
   def setUp(self):
     self.enterContext(OpenpilotPrefix())
 
+  def test_jetlink_does_not_evict_full_carstate_reader_pool(self):
+    from pathlib import Path
+    import struct
+    import os
+    from unittest.mock import patch
+    import cereal.messaging as messaging
+    # BP 7's msgq permits 15 subscribers. Modeld is the fifteenth; the old
+    # adapter created a sixteenth and reset every subscriber's read pointer.
+    pm = messaging.PubMaster(['carState', 'carControl', 'carControlSP'])
+    readers = [messaging.SubMaster(['carState']) for _ in range(14)]
+    sm = messaging.SubMaster(list(jetlink_adapter.adapter().IN_CONTROL_SERVICES))
+    queue = Path('/dev/shm') / ('msgq_' + os.environ['OPENPILOT_PREFIX']) / 'carState'
+    def header():
+      with queue.open('rb') as f:
+        return struct.unpack('48Q', f.read(384))
+    before = header()
+    self.assertEqual(before[0], 15)
+    for service in sm.services:
+      pm.send(service, messaging.new_message(service, valid=True))
+    sm.update(0)
+    with patch.object(jetlink_adapter, '_modeld_sm', sm):
+      op = jetlink_adapter.adapter()
+      for _ in range(20):
+        self.assertFalse(op.in_control())
+    after = header()
+    self.assertEqual(after[0], before[0])
+    self.assertEqual(after[33:48], before[33:48])
+    self.assertEqual(len(readers), 14)
+
   def test_real_interface(self):
     self.assertEqual(check_adapter(jetlink_adapter, heavy=(
       'numpy', 'capnp', 'zmq', 'openpilot.cereal', 'openpilot.common.params', 'openpilot.common.swaglog',

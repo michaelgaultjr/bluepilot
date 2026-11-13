@@ -27,7 +27,6 @@ from __future__ import annotations
 import functools
 import os
 import threading
-import time
 from collections import namedtuple
 from pathlib import Path
 
@@ -48,6 +47,16 @@ KEYS = _Keys(link='JetlinkLink', offroad='IsOffroad', progress='JetlinkProgress'
              spec='JetlinkSpec', charge_phone='JetlinkChargePhone')
 
 _AGNOS = os.path.isfile('/AGNOS')
+
+# modeld already reads these messages. A second carState subscription exceeds
+# BP 7's msgq reader limit and evicts calibration/localization readers.
+_modeld_sm = None
+
+
+def use_modeld_submaster(sm) -> None:
+  """Borrow modeld's frame snapshot; never open or poll another subscriber."""
+  global _modeld_sm
+  _modeld_sm = sm
 
 
 def _params_dir() -> Path:
@@ -94,18 +103,26 @@ def _adapter_class():
       from openpilot.system.hardware.hw import Paths
       return Path(Paths.model_root())
 
-    def in_control(self):
-      # BP 7 has a top-level cereal package. Prime Stock's reader without its newer import.
-      if self._sm is None:
-        if time.monotonic() < self._sm_after:
-          return True
-        self._sm_after = time.monotonic() + 5.
-        try:
-          import cereal.messaging as messaging
-          self._sm = messaging.SubMaster(list(self.IN_CONTROL_SERVICES))
-        except Exception:
-          return True
-      return super().in_control()
+    def in_control(self) -> bool:
+      # Called on modeld's frame thread, after its sm.update(0). Do not update
+      # that reader again: doing so would consume its per-frame update flags.
+      sm = _modeld_sm
+      if sm is None:
+        return True  # no frame snapshot yet: never allow promotion
+      try:
+        services = self.IN_CONTROL_SERVICES
+        result = not (sm.all_alive(services) and sm.all_valid(services)) or self.engaged(sm)
+      except Exception as e:
+        if self._in_control_error != (text := f"{type(e).__name__}: {e}"):
+          self._in_control_error = text
+          try:
+            self.log.exception("jetlink: in_control() failed: %s", text)
+          except Exception:
+            pass
+        return True
+      self._in_control_error = None
+      return bool(result)
+
     # MADS's state rides on carControlSP
     IN_CONTROL_SERVICES = ('carState', 'carControl', 'carControlSP')
 
