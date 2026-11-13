@@ -5,6 +5,7 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 import time
+from openpilot.sunnypilot import jetlink_adapter
 
 import pyray as rl
 
@@ -26,6 +27,10 @@ def _model_info() -> tuple[str, str, str]:
   """(active model, info header, info text) for the panel. Runner-matched: the
   active line names what actually drives, and a notable big-model state takes
   the info pair."""
+  status = jetlink_adapter.status()
+  if status is not None and status.enabled:
+    active = status.active_model if status.active else "small model"
+    return active or "external model", "jetlink", status.phase
   source, active_name, other_name = model_info()
   state = big_model_state()
   _, _, carry_display = carrying_model()
@@ -75,6 +80,8 @@ class ModelsLayoutMici(NavScroller):
     super().__init__()
     self.focused_widget = None
 
+    self.jetlink_btn = BigButton(tr("jetlink (experimental)"))
+    self.jetlink_btn.set_click_callback(self._show_jetlink_modes)
     self.current_model_info = CurrentModelInfo()
     self._download_progress = "."
     self._download_frame = 0
@@ -99,7 +106,7 @@ class ModelsLayoutMici(NavScroller):
                                            description=tr("Adds a gentle nudge toward lane center on top of the model's own steering, stronger when " +
                                                           "lane lines are clear. Yields around obstacles. Not available with the Default model."))
 
-    self.main_items = [self.current_model_info, self.select_model_btn, self.cancel_download_btn, self.refresh_btn, self.clear_cache_btn,
+    self.main_items = [self.current_model_info, self.jetlink_btn, self.select_model_btn, self.cancel_download_btn, self.refresh_btn, self.clear_cache_btn,
                        self.blendful_toggle]
     self._scroller.add_widgets(self.main_items)
 
@@ -123,6 +130,24 @@ class ModelsLayoutMici(NavScroller):
     scroller = NavScroller()
     scroller._scroller.add_widgets(items)
     gui_app.push_widget(scroller)
+
+  def _show_jetlink_modes(self):
+    if not ui_state.is_offroad():
+      return
+    buttons = []
+    for mode, title in enumerate(("off", "USB", "iOS")):
+      button = BigButton(title)
+      button.set_click_callback(lambda value=mode: self._set_jetlink_mode(value))
+      buttons.append(button)
+    self._push_selection_view(buttons)
+
+  def _set_jetlink_mode(self, mode):
+    if not ui_state.is_offroad():
+      return
+    if mode:
+      ui_state.params.put_bool("AdbEnabled", False, block=True)
+    ui_state.params.put("JetlinkLink", mode, block=True)
+    self._pop_to_main()
 
   def _show_folders(self):
     self.focused_widget = self.select_model_btn
@@ -215,6 +240,10 @@ class ModelsLayoutMici(NavScroller):
     self.blendful_toggle.refresh()
 
   def _update_state(self):
+    self.jetlink_btn.set_enabled(ui_state.is_offroad())
+    status = jetlink_adapter.status()
+    mode = ui_state.params.get("JetlinkLink", return_default=True)
+    self.jetlink_btn.set_value(status.phase if status is not None and status.shown else jetlink_adapter.MODES[max(0, min(2, mode))])
     super()._update_state()
 
     self.select_model_btn.set_enabled(ui_state.is_offroad())

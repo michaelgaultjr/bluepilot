@@ -118,6 +118,7 @@ class DeveloperLayout(Widget):
 
   def _update_toggles(self):
     ui_state.update_params()
+    self._adb_toggle.action_item.set_enabled(ui_state.is_offroad() and not self._params.get("JetlinkLink"))
 
     # Hide non-release toggles on release builds
     # TODO: we can do an onroad cycle, but alpha long toggle requires a deinit function to re-enable radar and not fault

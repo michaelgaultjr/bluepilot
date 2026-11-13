@@ -249,6 +249,13 @@ EVENTS_SP: dict[int, dict[str, Alert | AlertCallbackType]] = {
       Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 0.1),
   },
 
+  EventNameSP.jetlinkReady: {
+    ET.PERMANENT: Alert(
+      "Jetlink Model Ready", "Disengage steering and cruise, then re-engage to switch",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 0.1),
+  },
+
   EventNameSP.bigModelReady: {
     ET.PERMANENT: Alert(
       "Big Model Ready",

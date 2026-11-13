@@ -29,6 +29,7 @@ from openpilot.system.hardware.power_monitoring import PowerMonitoring
 from openpilot.system.hardware.fan_controller import FanController
 from openpilot.system.hardware.chestnut.monitoring import chestnut_state_thread
 from openpilot.system.hardware.chestnut.status import ChestnutStatus
+from openpilot.sunnypilot import jetlink_adapter
 from openpilot.common.version import terms_version, training_version, get_build_metadata, terms_version_sp
 
 ThermalStatus = log.DeviceState.ThermalStatus
@@ -211,6 +212,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     "not_onroad_cycle": True,
     "device_temp_good": True,
   }
+  shutdown_since = None
   startup_conditions: dict[str, bool] = {}
   startup_conditions_prev: dict[str, bool] = {}
 
@@ -365,6 +367,9 @@ def hardware_thread(end_event, hw_queue) -> None:
     # must be at an engageable thermal band to go onroad
     startup_conditions["device_temp_engageable"] = thermal_status < ThermalStatus.overheated
 
+    startup_conditions["not_powering_off"] = shutdown_since is None
+    reason = jetlink_adapter.reason()
+    set_offroad_alert_if_changed("Offroad_JetlinkUnavailable", reason is not None, extra_text=reason or "")
     startup_conditions["not_flashing_chestnut"] = not chestnut.flashing
 
     # ensure device is fully booted
@@ -459,7 +464,11 @@ def hardware_thread(end_event, hw_queue) -> None:
     msg.deviceState.somPowerDrawW = som_power_draw
 
     # Check if we need to shut down
-    if power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen):
+    should_shutdown = power_monitor.should_shutdown(onroad_conditions["ignition"], in_car, off_ts, started_seen)
+    if should_shutdown and shutdown_since is None:
+      shutdown_since = time.monotonic()
+    capped = shutdown_since is not None and time.monotonic() - shutdown_since > 30.
+    if jetlink_adapter.shutdown_step(should_shutdown, f"offroad since {off_ts}") or capped:
       cloudlog.warning(f"shutting device down, offroad since {off_ts}")
       params.put_bool("DoShutdown", True, block=True)
 

@@ -7,6 +7,7 @@ See the LICENSE.md file in the root directory for more details.
 import re
 import time
 import pyray as rl
+from openpilot.sunnypilot import jetlink_adapter
 
 from openpilot.cereal import custom
 from openpilot.sunnypilot.models.helpers import ACTIVE_BUNDLE_KEYS, get_selected_bundle, resolve_bundle_by_ref
@@ -54,6 +55,12 @@ class ModelsLayout(Widget):
     self._scroller = Scroller(self.items, line_separator=True, spacing=0)
 
   def _initialize_items(self):
+    self.jetlink_item = option_item_sp(
+      tr("Jetlink (Experimental)"), "JetlinkLink", 0, 2,
+      tr("External model over USB. Select the model in the Jetlink app. Separate power is required. Link loss requires takeover."),
+      1, self._jetlink_changed, True, "", style.BUTTON_ACTION_WIDTH, None, False,
+      lambda value: ("Off", "USB", "iOS")[max(0, min(2, int(value)))])
+
     self.small_model_item = ListItemSP(
       title=tr("Small Model"),
       description="",
@@ -111,9 +118,14 @@ class ModelsLayout(Widget):
                                         1, None, True, "", style.BUTTON_ACTION_WIDTH, None, True,
                                         lambda v: f"{v / 100:.2f} m")
 
-    self.items = [self.small_model_item, self.big_model_item, self.cancel_download_item, self.download_item, self.refresh_item, self.clear_cache_item,
+    self.items = [self.jetlink_item, self.small_model_item, self.big_model_item, self.cancel_download_item,
+                  self.download_item, self.refresh_item, self.clear_cache_item,
                   self.blendful_toggle, self.lane_turn_desire_toggle, self.lane_turn_value_control, self.lagd_toggle, self.delay_control,
                   self.camera_offset]
+
+  def _jetlink_changed(self, value):
+    if value:
+      ui_state.params.put_bool("AdbEnabled", False, block=True)
 
   def _update_lagd_description(self, lagd_toggle: bool):
     desc = tr("Enable this for the car to learn and adapt its steering response time. Disable to use a fixed steering response time. " +
@@ -365,6 +377,10 @@ class ModelsLayout(Widget):
       self._set_item_note(self.download_item, note)
 
     offroad = ui_state.is_offroad()
+    self.jetlink_item.action_item.set_enabled(offroad)
+    status = jetlink_adapter.status()
+    if status is not None and status.shown:
+      self.jetlink_item.set_description(f"{status.phase}: {status.active_model or 'small model'} — select the external model in the Jetlink app")
     self.small_model_item.action_item.set_enabled(offroad)
     self.big_model_item.action_item.set_enabled(offroad)
     self.small_model_item.set_description("" if offroad else tr("Only available when vehicle is off, or always offroad mode is on"))

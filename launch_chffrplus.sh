@@ -87,6 +87,11 @@ function launch {
   bash openpilot/sunnypilot/bluepilot_ensure_submodules.sh || true
   # End BluePilot
 
+  # Jetlink uses the data port; the comma must have its own power supply.
+  if [ -f /AGNOS ]; then
+    sudo -n bash jetlink/comma/jetlink-root.sh boot /data/params/d/JetlinkLink &
+  fi
+
   # hardware specific init
   if [ -f /AGNOS ]; then
     agnos_init

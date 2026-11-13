@@ -27,6 +27,8 @@ from openpilot.common.version import get_build_metadata
 from openpilot.common.hardware import HARDWARE
 
 from openpilot.sunnypilot.mads.mads import ModularAssistiveDrivingSystem
+from openpilot.sunnypilot import jetlink_adapter
+from openpilot.sunnypilot.jetlink_adapter.failure import FailureLatch
 from openpilot.sunnypilot import get_sanitize_int_param
 from openpilot.sunnypilot.selfdrive.car.car_specific import CarSpecificEventsSP
 from openpilot.sunnypilot.selfdrive.car.intelligent_cruise_button_management.controller import IntelligentCruiseButtonManagement
@@ -81,6 +83,9 @@ class SelfdriveD:
     self.calibrated_pose: Pose | None = None
     self.excessive_actuation_check = ExcessiveActuationCheck()
     self.excessive_actuation = self.params.get("Offroad_ExcessiveActuation") is not None
+    self.jetlink_swaps = jetlink_adapter.swap_events(DT_CTRL)
+    self.jetlink_failure = FailureLatch()
+    self.jetlink_settling = False
     self.big_model_loading = False
     self.big_model_active = False
     self.big_model_failed = False
@@ -189,6 +194,26 @@ class SelfdriveD:
     if self.sm['controlsState'].lateralControlState.which() == 'debugState':
       self.events.add(EventName.joystickDebug)
       self.startup_event = None
+
+    in_control = self.enabled or self.mads.enabled
+    self.jetlink_settling = False
+    link_lost = False
+    if self.jetlink_swaps is not None:
+      model_ok = self.sm.alive['modelV2'] and self.sm.valid['modelV2']
+      state_ok = self.sm.alive['modelDataV2SP'] and self.sm.valid['modelDataV2SP']
+      flags = self.jetlink_swaps.update(model_ok and state_ok, model_ok and self.sm['modelV2'].big, in_control,
+                                       state=self.sm['modelDataV2SP'].jetlinkState or 'none')
+      link_lost = flags.link_lost
+      # Only forgive expected switch frames when nothing is in control.
+      self.jetlink_settling = flags.settling and not in_control
+      if flags.no_entry:
+        self.events.add(EventName.bigModelLoading)
+      if flags.offer:
+        self.events_sp.add(custom.OnroadEventSP.EventName.jetlinkReady)
+      if flags.chime:
+        self.events_sp.add(custom.OnroadEventSP.EventName.bigModelReady)
+    if self.jetlink_failure.update(link_lost, in_control):
+      self.events.add(EventName.bigModelFailed)
 
     loading = self.params.get_bool("ChestnutLoading")
     if self.big_model_loading and not loading:
@@ -399,7 +424,7 @@ class SelfdriveD:
     if self.big_model_active and big_failed:
       self.events.add(EventName.bigModelFailed)
 
-    not_running = {p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning}
+    not_running = {p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning} - {jetlink_adapter.OWNER}
     if self.sm.recv_frame['managerState'] and len(not_running):
       if not_running != self.not_running_prev:
         cloudlog.event("process_not_running", not_running=not_running, error=True)
@@ -430,7 +455,7 @@ class SelfdriveD:
     has_disable_events = self.events.contains(ET.NO_ENTRY) and (self.events.contains(ET.SOFT_DISABLE) or self.events.contains(ET.IMMEDIATE_DISABLE))
     no_system_errors = (not has_disable_events) or (len(self.events) == num_events)
     warmup_sec = 5.
-    big_model_settling = self.big_model_loading or time.monotonic() < self.big_model_ready_t + warmup_sec
+    big_model_settling = self.big_model_loading or time.monotonic() < self.big_model_ready_t + warmup_sec or self.jetlink_settling
     if not self.sm.all_checks() and no_system_errors and not big_model_settling:  # the load holds modelV2 and friends back on purpose
       if not self.sm.all_alive():
         self.events.add(EventName.commIssue)

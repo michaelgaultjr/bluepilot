@@ -382,6 +382,7 @@ struct OnroadEventSP @0xda96579883444c35 {
     e2eChime @23;
     laneChangeRoadEdge @24;
     bigModelReady @25;
+    jetlinkReady @26;
   }
 }
 
@@ -499,6 +500,7 @@ struct ModelDataV2SP @0xa1680744031fdb2d {
   blendfulLeftProb @7 :Float32;
   blendfulRightProb @8 :Float32;
   blendfulLaneWidth @9 :Float32;
+  jetlinkState @10 :Text; # Jetlink STATES; empty on older builds
 
   enum TurnDirection {
     none @0;

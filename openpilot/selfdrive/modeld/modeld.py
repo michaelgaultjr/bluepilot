@@ -29,7 +29,7 @@ from msgq.visionipc import VisionIpcClient, VisionBuf
 from opendbc.car.car_helpers import get_demo_car_params
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.params import Params
-from openpilot.common.hardware.usb import cable_connected
+from openpilot.sunnypilot import jetlink_adapter
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.common.transformations.camera import DEVICE_CAMERAS
@@ -236,7 +236,7 @@ class ModelState(ModelStateBase):
 def main(demo=False):
   cloudlog.warning("modeld init")
 
-  CHESTNUT = chestnut_compiled() and (chestnut_present() or cable_connected())
+  CHESTNUT = chestnut_compiled() and (chestnut_present() or jetlink_adapter.chestnut_cable())
   if CHESTNUT:
     from tinygrad.runtime.ops_amd import AMDDevice
     AMDDevice.wait_timeout_ms = 3000
@@ -302,6 +302,8 @@ def main(demo=False):
   params.put_bool("ChestnutLoading", False)
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
+  if jetlink_adapter.prepare(CHESTNUT):
+    model = jetlink_adapter.attach(model, small_model, vipc_client_main.width, vipc_client_main.height)
   config_realtime_process(7, 54)
 
   # messaging
@@ -407,6 +409,7 @@ def main(demo=False):
     run_count = run_count + 1
 
     frame_drop_ratio = frames_dropped / (1 + frames_dropped)
+    model.frame_drop_ratio = frame_drop_ratio
 
     bufs = {name: buf_extra if 'big' in name else buf_main for name in model.vision_input_names}
     transforms = {name: model_transform_extra if 'big' in name else model_transform_main for name in model.vision_input_names}
@@ -437,6 +440,8 @@ def main(demo=False):
         chestnut_state.big = False
       run_count = 0
       model_output = None
+    if jetlink_adapter.handed_over(model):
+      run_count = 0
     mt2 = time.perf_counter()
     model_execution_time = mt2 - mt1
 
@@ -463,6 +468,7 @@ def main(demo=False):
       DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge)
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
+      mdv2sp_send.modelDataV2SP.jetlinkState = jetlink_adapter.state(model)
       mdv2sp_send.valid = modelv2_send.valid
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction
 
