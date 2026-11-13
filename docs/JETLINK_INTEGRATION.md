@@ -2,7 +2,8 @@
 
 Both branches are published as **experimental source installation candidates**.
 They build on Linux and have working comma installers. Jetlink starts **off**.
-This port has not been installed or tested on a physical comma 4, Jetson, or car.
+The comma 4 installation is undergoing bench troubleshooting; the complete
+comma/Jetson connection and vehicle behavior have not yet been validated.
 
 **BP 7 validation issue:** its existing Ford CAN safety suite fails identically
 on the original BP 7 base and this Jetlink branch, including the angle-mode
@@ -60,7 +61,11 @@ containing the expected repository and branch.
    Choose it in the Jetlink web interface or host tools; BluePilot's normal
    model selector still chooses the local model. Check the state in Models and
    run `jetlink status` on the Jetson. This port does not reproduce Zoompilot's
-   home-button icon.
+   home-button icon. The status distinguishes **disconnected / waiting for host**
+   from model preparation. Preparation details say **Last update** because the
+   upstream progress record has no timestamp; they do not prove a build is still
+   advancing. Vehicle detection and calibration are not prerequisites for USB
+   enumeration or offroad preparation.
 8. Keep the host release and selected model fixed during validation. The client
    pin does not freeze the remote model catalogue. `jetlink update` updates the
    host, so review compatibility before using it.
@@ -105,6 +110,7 @@ submodules. These are host tests, not ARM/QCOM device or vehicle validation.
 | Existing Ford vehicle/control and cruise state tests | 60 passed, 15 subtests | Included below |
 | Existing MADS tests | 10 passed | Included below |
 | Existing Ford safety, vehicle, cruise and MADS suite | Ford safety failures below | 209 passed, 164 skipped, 9,137 subtests |
+| Connection display: unplugged/stale progress, waiting, connected, invalid progress | 5 passed | 5 passed |
 | Both settings layouts: render, USB selection, ADB clearing, onroad lockout | Passed under Xvfb | Passed under Xvfb |
 | Edited Python lint/syntax, whitespace, vendored checksums | Passed | Passed |
 

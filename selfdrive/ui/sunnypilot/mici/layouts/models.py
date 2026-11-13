@@ -7,6 +7,7 @@ See the LICENSE.md file in the root directory for more details.
 from collections.abc import Callable
 import pyray as rl
 from openpilot.sunnypilot import jetlink_adapter  # BluePilot: Jetlink settings
+from openpilot.sunnypilot.jetlink_adapter.display import status_text  # BluePilot: USB presence and progress
 
 from cereal import custom
 from openpilot.sunnypilot.models.default_model import DEFAULT_MODEL
@@ -33,7 +34,7 @@ class CurrentModelInfo(Widget):
     self.current_model_text = UnifiedLabel(default_text, 32, max_width=max_width, text_color=subheader_color, font_weight=FontWeight.ROMAN, scroll=True)
 
     self.info_header = UnifiedLabel("cache size", 48, max_width=max_width, text_color=header_color, font_weight=FontWeight.DISPLAY)
-    self.info_text = UnifiedLabel("0 mb", 32, max_width=max_width, text_color=subheader_color, font_weight=FontWeight.ROMAN)
+    self.info_text = UnifiedLabel("0 mb", 32, max_width=max_width, text_color=subheader_color, font_weight=FontWeight.ROMAN, scroll=True)
 
   def _render(self, _):
     self.current_model_header.set_position(self._rect.x + 20, self._rect.y - 10)
@@ -178,8 +179,9 @@ class ModelsLayoutMici(NavScroller):
     # BluePilot: show Jetlink state on the comma 4 model screen.
     self.jetlink_btn.set_enabled(ui_state.is_offroad())
     status = jetlink_adapter.status()
+    jetlink_text = status_text(status)
     mode = ui_state.params.get("JetlinkLink", return_default=True)
-    self.jetlink_btn.set_value(status.phase if status is not None and status.shown else jetlink_adapter.MODES[max(0, min(2, mode))])
+    self.jetlink_btn.set_value(jetlink_text.label if status is not None and status.shown else jetlink_adapter.MODES[max(0, min(2, mode))])
     # End BluePilot
     super()._update_state()
 
@@ -209,7 +211,7 @@ class ModelsLayoutMici(NavScroller):
     if status is not None and status.enabled:
       self.current_model_info.current_model_text.set_text(status.active_model if status.active else model_text)
       self.current_model_info.info_header.set_text("jetlink")
-      self.current_model_info.info_text.set_text(status.phase)
+      self.current_model_info.info_text.set_text(f'{jetlink_text.label}: {jetlink_text.detail}')
     # End BluePilot
 
     if manager.selectedBundle and manager.selectedBundle.status == custom.ModelManagerSP.DownloadStatus.failed:

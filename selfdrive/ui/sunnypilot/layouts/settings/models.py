@@ -9,6 +9,7 @@ import re
 import time
 import pyray as rl
 from openpilot.sunnypilot import jetlink_adapter  # BluePilot: Jetlink settings
+from openpilot.sunnypilot.jetlink_adapter.display import status_text  # BluePilot: USB presence and progress
 
 from cereal import custom
 from openpilot.sunnypilot.models.default_model import DEFAULT_MODEL
@@ -247,7 +248,8 @@ class ModelsLayout(Widget):
     self.jetlink_item.action_item.set_enabled(ui_state.is_offroad())
     status = jetlink_adapter.status()
     if status is not None and status.shown:
-      self.jetlink_item.set_description(f"{status.phase}: {status.active_model or 'small model'} - select the external model in the Jetlink app")
+      text = status_text(status)
+      self.jetlink_item.set_description(f"{text.label}: {text.detail}")
     # End BluePilot
     advanced_controls: bool = ui_state.params.get_bool("ShowAdvancedControls")
     turn_desire: bool = ui_state.params.get_bool("LaneTurnDesire")

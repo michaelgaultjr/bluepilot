@@ -14,6 +14,7 @@ from jetlink.openpilot.testing import check_fallback, check_seam
 from openpilot.sunnypilot import jetlink_adapter as adapter
 from openpilot.sunnypilot.jetlink_adapter.actions import with_blendful
 from openpilot.sunnypilot.jetlink_adapter.failure import FailureLatch
+from openpilot.sunnypilot.jetlink_adapter.display import status_text
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -172,6 +173,42 @@ class TestSelfdrivedIntegration(unittest.TestCase):
     self.sm.valid = {'modelV2': True, 'modelDataV2SP': False}
     self.tick('ready')
     self.assertNotIn('offer', self.sd.events_sp)
+
+
+class TestStatusDisplay(unittest.TestCase):
+  def snapshot(self, **changes):
+    from jetlink.openpilot.status import Status
+    data = dict(enabled=True, mode='usb', transport='USB', present=False, port='empty',
+                ready=False, reason=None, progress={'stage': 'build', 'frac': .5, 'msg': 'about 2 min left'},
+                model='external', default_model='external')
+    return Status(**(data | changes))
+
+  def test_unplug_overrides_cached_build_and_ready_records(self):
+    for ready in (False, True):
+      status = self.snapshot(ready=ready)
+      self.assertEqual(status.phase, 'preparing')  # reproduces the misleading raw phase
+      text = status_text(status)
+      self.assertEqual(text.label, 'disconnected')
+      self.assertNotIn('build', text.detail)
+
+  def test_cable_without_host_is_not_preparation(self):
+    for port in ('host', None):
+      self.assertEqual(status_text(self.snapshot(port=port)).label, 'waiting for host')
+
+  def test_connected_progress_is_identified_as_last_report(self):
+    text = status_text(self.snapshot(present=True, port='host'))
+    self.assertEqual(text.label, 'preparing')
+    self.assertEqual(text.detail, 'Last update: build 50%: about 2 min left')
+
+  def test_connected_without_progress_does_not_claim_a_build(self):
+    self.assertEqual(status_text(self.snapshot(present=True, port='host', progress=None)).label, 'connected')
+
+  def test_off_errors_and_malformed_progress(self):
+    self.assertEqual(status_text(self.snapshot(enabled=False)).label, 'off')
+    self.assertEqual(status_text(self.snapshot(reason='service stopped')).detail, 'service stopped')
+    for fraction in (None, 'bad', float('nan'), float('inf')):
+      text = status_text(self.snapshot(present=True, progress={'stage': 'build', 'frac': fraction}))
+      self.assertEqual(text.detail, 'Last update: build')
 
 
 class TestPackaging(unittest.TestCase):
