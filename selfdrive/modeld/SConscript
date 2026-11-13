@@ -108,6 +108,14 @@ for usbgpu in [False, True] if USBGPU else [False]:
   if usbgpu:
     lenv.SideEffect(usbgpu_lock, node)
 
+# BluePilot: build Jetlink warps for both comma 3 and comma 4 cameras.
+for cam_w, cam_h in CAMERA_CONFIGS:
+  warp_pkl_path = File(f"models/driving_warp_{cam_w}x{cam_h}_tinygrad.pkl").abspath
+  cmd = (f'{tg_flags} {mac_brew_string} python3 {modeld_dir}/compile_jetlink_warp.py '
+         f'--camera-resolution {cam_w}x{cam_h} --warp-to {model_w}x{model_h} --output {warp_pkl_path}')
+  lenv.Command(warp_pkl_path, tinygrad_files + compile_modeld_script + [File(f"{modeld_dir}/compile_jetlink_warp.py"), Value(cmd)], cmd)
+# End BluePilot
+
 # get model metadata
 fn = File(f"models/dmonitoring_model").abspath
 script_files = [File(Dir("#selfdrive/modeld").File("get_model_metadata.py").abspath)]

@@ -342,6 +342,8 @@ struct OnroadEventSP @0xda96579883444c35 {
     speedLimitChanged @21;
     speedLimitPending @22;
     e2eChime @23;
+    jetlinkReady @24;
+    bigModelReady @25;
   }
 }
 
@@ -448,6 +450,7 @@ struct LiveMapDataSP @0xf416ec09499d9d19 {
 
 struct ModelDataV2SP @0xa1680744031fdb2d {
   laneTurnDirection @0 :TurnDirection;
+  jetlinkState @1 :Text; # BluePilot: Jetlink model handover state
 
   enum TurnDirection {
     none @0;

@@ -24,6 +24,9 @@ from msgq.visionipc import VisionIpcClient, VisionStreamType, VisionBuf
 from opendbc.car.car_helpers import get_demo_car_params
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.params import Params
+# BluePilot: optional external model integration.
+from openpilot.sunnypilot import jetlink_adapter
+# End BluePilot
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.common.transformations.camera import DEVICE_CAMERAS
@@ -262,7 +265,6 @@ def main(demo=False):
   sentry.set_tag("daemon", PROCESS_NAME)
   cloudlog.bind(daemon=PROCESS_NAME)
   setproctitle(PROCESS_NAME)
-  config_realtime_process(7, 54)
 
   # visionipc clients
   while True:
@@ -290,6 +292,13 @@ def main(demo=False):
   cloudlog.warning("loading model")
   model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height)
   cloudlog.warning("models loaded, modeld starting")
+
+  # BluePilot: prepare GPU workers before realtime affinity is inherited.
+  small_model = model
+  if jetlink_adapter.prepare(jetlink_adapter.adapter().chestnut_present()):
+    model = jetlink_adapter.attach(model, small_model, vipc_client_main.width, vipc_client_main.height)
+  # End BluePilot
+  config_realtime_process(7, 54)
 
   # messaging
   pm = PubMaster(["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP"])
@@ -393,6 +402,7 @@ def main(demo=False):
     run_count = run_count + 1
 
     frame_drop_ratio = frames_dropped / (1 + frames_dropped)
+    model.frame_drop_ratio = frame_drop_ratio  # BluePilot: Jetlink lag detection
     prepare_only = vipc_dropped_frames > 0
     if prepare_only:
       cloudlog.error(f"skipping model eval. Dropped {vipc_dropped_frames} frames")
@@ -409,6 +419,10 @@ def main(demo=False):
 
     mt1 = time.perf_counter()
     model_output = model.run(bufs, transforms, inputs, prepare_only)
+    # BluePilot: handover restarts frame-drop warmup.
+    if jetlink_adapter.handed_over(model):
+      run_count = 0
+    # End BluePilot
     mt2 = time.perf_counter()
     model_execution_time = mt2 - mt1
 
@@ -431,6 +445,10 @@ def main(demo=False):
       DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob)
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
+      # BluePilot: the state must have the same validity as the model output.
+      mdv2sp_send.valid = modelv2_send.valid
+      mdv2sp_send.modelDataV2SP.jetlinkState = jetlink_adapter.state(model)
+      # End BluePilot
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction
       drivingdata_send.drivingModelData.meta.laneChangeState = DH.lane_change_state
       drivingdata_send.drivingModelData.meta.laneChangeDirection = DH.lane_change_direction

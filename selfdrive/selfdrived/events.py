@@ -217,6 +217,13 @@ def invalid_lkas_setting_alert(CP: car.CarParams, CS: car.CarState, sm: messagin
 
 
 EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
+  # BluePilot: Jetlink takeover uses the existing longitudinal and MADS state machines.
+  EventName.bigModelLoading: {ET.NO_ENTRY: NoEntryAlert("External Model Loading")},
+  EventName.bigModelFailed: {
+    ET.NO_ENTRY: NoEntryAlert("External Model Lost"),
+    ET.SOFT_DISABLE: soft_disable_alert("External Model Lost: Take Control"),
+  },
+  # End BluePilot
   # ********** events with no alerts **********
 
   EventName.stockFcw: {},

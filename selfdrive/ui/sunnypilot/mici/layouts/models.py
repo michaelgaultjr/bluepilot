@@ -6,6 +6,7 @@ See the LICENSE.md file in the root directory for more details.
 """
 from collections.abc import Callable
 import pyray as rl
+from openpilot.sunnypilot import jetlink_adapter  # BluePilot: Jetlink settings
 
 from cereal import custom
 from openpilot.sunnypilot.models.default_model import DEFAULT_MODEL
@@ -54,6 +55,10 @@ class ModelsLayoutMici(NavScroller):
     self.original_back_callback = back_callback
     self.focused_widget = None
 
+    # BluePilot: comma 4 external-model controls.
+    self.jetlink_btn = BigButton(tr("jetlink (experimental)"))
+    self.jetlink_btn.set_click_callback(self._show_jetlink_modes)
+    # End BluePilot
     self.current_model_info = CurrentModelInfo()
     self._download_progress = "."
     self._download_frame = 0
@@ -65,7 +70,7 @@ class ModelsLayoutMici(NavScroller):
     self.cancel_download_btn = BigButton(tr("cancel download"))
     self.cancel_download_btn.set_click_callback(lambda: ui_state.params.remove("ModelManager_DownloadIndex"))
 
-    self.main_items = [self.current_model_info, self.select_model_btn, self.cancel_download_btn]
+    self.main_items = [self.current_model_info, self.jetlink_btn, self.select_model_btn, self.cancel_download_btn]
     self._scroller.add_widgets(self.main_items)
 
   @property
@@ -91,6 +96,26 @@ class ModelsLayoutMici(NavScroller):
       item.set_touch_valid_callback(lambda: self._scroller.scroll_panel.is_touch_valid() and self._scroller.enabled)
     self._scroller.scroll_panel.set_offset(0)
     self.set_back_callback(back_callback)
+
+  # BluePilot: match the BP 7 navigation stack and offroad setting guard.
+  def _show_jetlink_modes(self):
+    if not ui_state.is_offroad():
+      return
+    buttons = []
+    for mode, title in enumerate(("off", "USB", "iOS")):
+      button = BigButton(title)
+      button.set_click_callback(lambda value=mode: self._set_jetlink_mode(value))
+      buttons.append(button)
+    self._show_selection_view(buttons, self._reset_main_view)
+
+  def _set_jetlink_mode(self, mode):
+    if not ui_state.is_offroad():
+      return
+    if mode:
+      ui_state.params.put_bool("AdbEnabled", False, block=True)
+    ui_state.params.put("JetlinkLink", mode, block=True)
+    self._reset_main_view()
+  # End BluePilot
 
   def _show_folders(self):
     self.focused_widget = self.select_model_btn
@@ -150,6 +175,12 @@ class ModelsLayoutMici(NavScroller):
       self._was_downloading = False
 
   def _update_state(self):
+    # BluePilot: show Jetlink state on the comma 4 model screen.
+    self.jetlink_btn.set_enabled(ui_state.is_offroad())
+    status = jetlink_adapter.status()
+    mode = ui_state.params.get("JetlinkLink", return_default=True)
+    self.jetlink_btn.set_value(status.phase if status is not None and status.shown else jetlink_adapter.MODES[max(0, min(2, mode))])
+    # End BluePilot
     super()._update_state()
 
     self.select_model_btn.set_enabled(ui_state.is_offroad())
@@ -174,6 +205,12 @@ class ModelsLayoutMici(NavScroller):
     self.current_model_info.current_model_text.set_text(model_text)
     self.current_model_info.info_header.set_text(tr("cache size"))
     self.current_model_info.info_text.set_text(f"{ModelsLayout.calculate_cache_size():.2f} MB")
+    # BluePilot: name the external model only while it actually drives.
+    if status is not None and status.enabled:
+      self.current_model_info.current_model_text.set_text(status.active_model if status.active else model_text)
+      self.current_model_info.info_header.set_text("jetlink")
+      self.current_model_info.info_text.set_text(status.phase)
+    # End BluePilot
 
     if manager.selectedBundle and manager.selectedBundle.status == custom.ModelManagerSP.DownloadStatus.failed:
       self.current_model_info.info_header.set_text(tr("error") + self._download_progress)

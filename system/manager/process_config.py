@@ -6,7 +6,8 @@ from cereal import car, custom
 from openpilot.common.params import Params
 from openpilot.common.bluepilot import is_bluepilot
 from openpilot.system.hardware import PC, TICI
-from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
+from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess, RestartingPythonProcess
+from openpilot.sunnypilot import jetlink_adapter  # BluePilot: optional Jetlink owner
 from openpilot.system.hardware.hw import Paths
 
 from openpilot.sunnypilot.mapd.mapd_manager import MAPD_PATH
@@ -217,5 +218,9 @@ if os.path.exists("../../third_party/copyparty/copyparty-sfx.py"):
   copyparty_args += ["-z"]
   copyparty_args += ["-q"]
   procs += [NativeProcess("copyparty-sfx", "third_party/copyparty", ["./copyparty-sfx.py", *copyparty_args], and_(only_offroad, use_copyparty))]
+
+# BluePilot: add the USB owner alongside the existing process list.
+procs += [RestartingPythonProcess(jetlink_adapter.OWNER, "openpilot.sunnypilot.jetlink_adapter", jetlink_adapter.should_run)]
+# End BluePilot
 
 managed_processes = {p.name: p for p in procs}

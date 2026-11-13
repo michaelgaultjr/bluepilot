@@ -25,6 +25,10 @@ from openpilot.system.version import get_build_metadata
 from openpilot.system.hardware import HARDWARE
 
 from openpilot.sunnypilot.mads.mads import ModularAssistiveDrivingSystem
+# BluePilot: Jetlink handover and latched loss detection.
+from openpilot.sunnypilot import jetlink_adapter
+from openpilot.sunnypilot.jetlink_adapter.failure import FailureLatch
+# End BluePilot
 from openpilot.sunnypilot import get_sanitize_int_param
 from openpilot.sunnypilot.selfdrive.car.car_specific import CarSpecificEventsSP
 from openpilot.sunnypilot.selfdrive.car.cruise_helpers import CruiseHelper
@@ -84,6 +88,12 @@ class SelfdriveD(CruiseHelper):
     self.calibrated_pose: Pose | None = None
     self.excessive_actuation_check = ExcessiveActuationCheck()
     self.excessive_actuation = self.params.get("Offroad_ExcessiveActuation") is not None
+
+    # BluePilot: retain a loss until both steering and cruise disengage.
+    self.jetlink_swaps = jetlink_adapter.swap_events(DT_CTRL)
+    self.jetlink_failure = FailureLatch()
+    self.jetlink_settling = False
+    # End BluePilot
 
     # Setup sockets
     self.pm = messaging.PubMaster(['selfdriveState', 'onroadEvents'] + ['selfdriveStateSP', 'onroadEventsSP'])
@@ -194,6 +204,29 @@ class SelfdriveD(CruiseHelper):
     if self.sm['controlsState'].lateralControlState.which() == 'debugState':
       self.events.add(EventName.joystickDebug)
       self.startup_event = None
+
+    # BluePilot: Jetlink model transition events.
+    in_control = self.enabled or self.mads.enabled
+    self.jetlink_settling = False
+    link_lost = False
+    if self.jetlink_swaps is not None:
+      model_ok = self.sm.alive['modelV2'] and self.sm.valid['modelV2']
+      state_ok = self.sm.alive['modelDataV2SP'] and self.sm.valid['modelDataV2SP']
+      flags = self.jetlink_swaps.update(model_ok and state_ok, model_ok and state_ok and self.sm['modelDataV2SP'].jetlinkState == 'running', in_control,
+                                       state=self.sm['modelDataV2SP'].jetlinkState or 'none')
+      link_lost = flags.link_lost
+      # Only forgive expected switch frames when nothing is in control.
+      self.jetlink_settling = flags.settling and not in_control
+      if flags.no_entry:
+        self.events.add(EventName.bigModelLoading)
+      if flags.offer:
+        self.events_sp.add(custom.OnroadEventSP.EventName.jetlinkReady)
+      if flags.chime:
+        self.events_sp.add(custom.OnroadEventSP.EventName.bigModelReady)
+    if self.jetlink_failure.update(link_lost, in_control):
+      self.events.add(EventName.bigModelFailed)
+
+    # End BluePilot
 
     if self.sm.recv_frame['lateralManeuverPlan'] > 0:
       self.events.add(EventName.lateralManeuver)
@@ -369,7 +402,7 @@ class SelfdriveD(CruiseHelper):
     # All events here should at least have NO_ENTRY and SOFT_DISABLE.
     num_events = len(self.events)
 
-    not_running = {p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning}
+    not_running = {p.name for p in self.sm['managerState'].processes if not p.running and p.shouldBeRunning} - {jetlink_adapter.OWNER}
     if self.sm.recv_frame['managerState'] and len(not_running):
       if not_running != self.not_running_prev:
         cloudlog.event("process_not_running", not_running=not_running, error=True)
@@ -411,7 +444,7 @@ class SelfdriveD(CruiseHelper):
     # of radarTempUnavailable clearing, but commIssue still fired every time regardless -- a
     # BluePilotDev/bluepilot#188 hold on the radar side alone (bp-dev-188) narrowed but could not
     # close this, since the race is at the transition boundary, not about recovery duration.
-    raw_comm_issue = not self.sm.all_checks() and no_system_errors
+    raw_comm_issue = not self.sm.all_checks() and no_system_errors and not self.jetlink_settling
     self.comm_issue_counter = self.comm_issue_counter + 1 if raw_comm_issue else 0
     if self.comm_issue_counter > COMM_ISSUE_DEBOUNCE_FRAMES:
       # End BluePilot

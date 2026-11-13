@@ -132,6 +132,10 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     userBookmark @95;
     excessiveActuation @96;
     audioFeedback @97;
+    # BluePilot: backport upstream big-model events with upstream ordinals.
+    bigModelLoading @100;
+    bigModelReadyDEPRECATED @101;
+    bigModelFailed @102;
 
     soundsUnavailableDEPRECATED @47;
   }

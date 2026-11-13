@@ -1,0 +1,16 @@
+name: Jetlink portable integration checks
+on:
+  pull_request:
+  push:
+    branches: [bp-7.0-jetlink, bp-sunnypilot-jetlink]
+jobs:
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s sunnypilot/jetlink_adapter/tests -p test_portable.py -v

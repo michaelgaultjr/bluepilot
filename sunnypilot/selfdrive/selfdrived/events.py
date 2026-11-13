@@ -88,6 +88,15 @@ class EventsSP(EventsBase):
 
 
 EVENTS_SP: dict[int, dict[str, Alert | AlertCallbackType]] = {
+  # BluePilot: inform the driver before and after a disengaged-only model swap.
+  EventNameSP.jetlinkReady: {
+    ET.PERMANENT: NormalPermanentAlert("External Model Ready", "Disengage steering and cruise to switch"),
+  },
+  EventNameSP.bigModelReady: {
+    ET.PERMANENT: Alert("External Model Active", "", AlertStatus.normal, AlertSize.small,
+                        Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 1.),
+  },
+  # End BluePilot
   # sunnypilot
   EventNameSP.lkasEnable: {
     ET.ENABLE: EngagementAlert(AudibleAlert.engage),

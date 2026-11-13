@@ -47,6 +47,8 @@ params = Params()
 # Parameters that should never be remotely modified
 BLOCKED_PARAMS = {
   "AdbEnabled",
+  "JetlinkLink",  # USB ownership is configured locally and offroad
+  "JetlinkChargePhone",
   "CompletedSunnylinkConsentVersion",
   "CompletedTrainingVersion",
   "GithubUsername",  # Could grant SSH access

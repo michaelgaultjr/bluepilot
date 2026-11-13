@@ -89,6 +89,12 @@ function launch {
   ln -sfn $(pwd) /data/pythonpath
   export PYTHONPATH="$PWD"
 
+  # BluePilot: initialize Jetlink USB permissions before unprivileged manager.
+  if [ -f /AGNOS ]; then
+    sudo -n bash jetlink/comma/jetlink-root.sh boot /data/params/d/JetlinkLink &
+  fi
+  # End BluePilot
+
   # hardware specific init
   if [ -f /AGNOS ]; then
     agnos_init

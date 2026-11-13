@@ -8,6 +8,7 @@ import os
 import re
 import time
 import pyray as rl
+from openpilot.sunnypilot import jetlink_adapter  # BluePilot: Jetlink settings
 
 from cereal import custom
 from openpilot.sunnypilot.models.default_model import DEFAULT_MODEL
@@ -49,6 +50,13 @@ class ModelsLayout(Widget):
     self._scroller = Scroller(self.items, line_separator=True, spacing=0)
 
   def _initialize_items(self):
+    # BluePilot: offroad-only external model selection.
+    self.jetlink_item = option_item_sp(
+      tr("Jetlink (Experimental)"), "JetlinkLink", 0, 2,
+      tr("External model over USB. Select the model in the Jetlink app. Separate power is required. Link loss requires takeover."),
+      1, self._jetlink_changed, True, "", style.BUTTON_ACTION_WIDTH, None, False,
+      lambda value: ("Off", "USB", "iOS")[max(0, min(2, int(value)))])
+    # End BluePilot
     self.current_model_item = ListItemSP(
       title=tr("Current Model"),
       description="",
@@ -93,9 +101,15 @@ class ModelsLayout(Widget):
 
     self.lagd_toggle = toggle_item_sp(tr("Live Learning Steer Delay"), "", param="LagdToggle")
 
-    self.items = [self.current_model_item, self.cancel_download_item, self.supercombo_label, self.vision_label,
+    self.items = [self.jetlink_item, self.current_model_item, self.cancel_download_item, self.supercombo_label, self.vision_label,
                   self.policy_label, self.off_policy_label, self.on_policy_label, self.refresh_item, self.clear_cache_item, self.lane_turn_desire_toggle,
                   self.lane_turn_value_control, self.lagd_toggle, self.delay_control]
+
+  # BluePilot: Jetlink and Android USB debugging share the USB port.
+  def _jetlink_changed(self, value):
+    if value:
+      ui_state.params.put_bool("AdbEnabled", False, block=True)
+  # End BluePilot
 
   def _update_lagd_description(self, lagd_toggle: bool):
     desc = tr("Enable this for the car to learn and adapt its steering response time. Disable to use a fixed steering response time. " +
@@ -229,6 +243,12 @@ class ModelsLayout(Widget):
     gui_app.push_widget(self.model_dialog)
 
   def _update_state(self):
+    # BluePilot: display connection state without changing the local model choice.
+    self.jetlink_item.action_item.set_enabled(ui_state.is_offroad())
+    status = jetlink_adapter.status()
+    if status is not None and status.shown:
+      self.jetlink_item.set_description(f"{status.phase}: {status.active_model or 'small model'} — select the external model in the Jetlink app")
+    # End BluePilot
     advanced_controls: bool = ui_state.params.get_bool("ShowAdvancedControls")
     turn_desire: bool = ui_state.params.get_bool("LaneTurnDesire")
     live_delay: bool = ui_state.params.get_bool("LagdToggle")
