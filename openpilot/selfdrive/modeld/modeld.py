@@ -309,8 +309,11 @@ def main(demo=False):
   # messaging
   pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP"] + (["chestnutGpuState"] if CHESTNUT else [])
   pm = PubMaster(pub_socks)
+  # BluePilot: share the frame reader with Jetlink instead of opening duplicate subscriptions.
   sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState",
-                  "carControl", "controlsState", "lateralDelay"])
+                  "carControl", "controlsState", "lateralDelay", "carControlSP"])
+  jetlink_adapter.use_modeld_submaster(sm)
+  # End BluePilot
 
   publish_state = PublishState()
   params = Params()

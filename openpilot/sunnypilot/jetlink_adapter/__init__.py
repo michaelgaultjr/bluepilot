@@ -49,6 +49,17 @@ KEYS = _Keys(link='JetlinkLink', offroad='IsOffroad', progress='JetlinkProgress'
 _AGNOS = os.path.isfile('/AGNOS')
 
 
+# modeld already reads these messages. A second carState subscription exceeds
+# BP 7's msgq reader limit and evicts calibration/localization readers.
+_modeld_sm = None
+
+
+def use_modeld_submaster(sm) -> None:
+  """Borrow modeld's frame snapshot; never open or poll another subscriber."""
+  global _modeld_sm
+  _modeld_sm = sm
+
+
 def _params_dir() -> Path:
   """The params store's directory, by params.cc and hw.h's rule: PARAMS_ROOT,
   else /data/params on a device and $HOME/.comma<OPENPILOT_PREFIX>/params
@@ -88,6 +99,26 @@ def _adapter_class():
     """jetlink.openpilot.interface.Openpilot over this fork: stock openpilot
     but for what follows."""
     KEYS = Keys(**KEYS._asdict())
+    def in_control(self) -> bool:
+      # Called on modeld's frame thread, after its sm.update(0). Do not update
+      # that reader again: doing so would consume its per-frame update flags.
+      sm = _modeld_sm
+      if sm is None:
+        return True  # no frame snapshot yet: never allow promotion
+      try:
+        services = self.IN_CONTROL_SERVICES
+        result = not (sm.all_alive(services) and sm.all_valid(services)) or self.engaged(sm)
+      except Exception as e:
+        if self._in_control_error != (text := f"{type(e).__name__}: {e}"):
+          self._in_control_error = text
+          try:
+            self.log.exception("jetlink: in_control() failed: %s", text)
+          except Exception:
+            pass
+        return True
+      self._in_control_error = None
+      return bool(result)
+
     # MADS's state rides on carControlSP
     IN_CONTROL_SERVICES = ('carState', 'carControl', 'carControlSP')
 
