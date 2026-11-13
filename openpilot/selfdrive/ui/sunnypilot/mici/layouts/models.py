@@ -6,6 +6,7 @@ See the LICENSE.md file in the root directory for more details.
 """
 import time
 from openpilot.sunnypilot import jetlink_adapter
+from openpilot.sunnypilot.jetlink_adapter.display import status_text  # BluePilot: USB presence and progress
 
 import pyray as rl
 
@@ -30,7 +31,8 @@ def _model_info() -> tuple[str, str, str]:
   status = jetlink_adapter.status()
   if status is not None and status.enabled:
     active = status.active_model if status.active else "small model"
-    return active or "external model", "jetlink", status.phase
+    text = status_text(status)
+    return active or "external model", "jetlink", f"{text.label}: {text.detail}"
   source, active_name, other_name = model_info()
   state = big_model_state()
   _, _, carry_display = carrying_model()
@@ -243,7 +245,7 @@ class ModelsLayoutMici(NavScroller):
     self.jetlink_btn.set_enabled(ui_state.is_offroad())
     status = jetlink_adapter.status()
     mode = ui_state.params.get("JetlinkLink", return_default=True)
-    self.jetlink_btn.set_value(status.phase if status is not None and status.shown else jetlink_adapter.MODES[max(0, min(2, mode))])
+    self.jetlink_btn.set_value(status_text(status).label if status is not None and status.shown else jetlink_adapter.MODES[max(0, min(2, mode))])
     super()._update_state()
 
     self.select_model_btn.set_enabled(ui_state.is_offroad())

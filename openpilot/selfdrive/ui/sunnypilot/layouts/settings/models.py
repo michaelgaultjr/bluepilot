@@ -8,6 +8,7 @@ import re
 import time
 import pyray as rl
 from openpilot.sunnypilot import jetlink_adapter
+from openpilot.sunnypilot.jetlink_adapter.display import status_text  # BluePilot: USB presence and progress
 
 from openpilot.cereal import custom
 from openpilot.sunnypilot.models.helpers import ACTIVE_BUNDLE_KEYS, get_selected_bundle, resolve_bundle_by_ref
@@ -380,7 +381,8 @@ class ModelsLayout(Widget):
     self.jetlink_item.action_item.set_enabled(offroad)
     status = jetlink_adapter.status()
     if status is not None and status.shown:
-      self.jetlink_item.set_description(f"{status.phase}: {status.active_model or 'small model'} — select the external model in the Jetlink app")
+      text = status_text(status)
+      self.jetlink_item.set_description(f"{text.label}: {text.detail}")
     self.small_model_item.action_item.set_enabled(offroad)
     self.big_model_item.action_item.set_enabled(offroad)
     self.small_model_item.set_description("" if offroad else tr("Only available when vehicle is off, or always offroad mode is on"))
