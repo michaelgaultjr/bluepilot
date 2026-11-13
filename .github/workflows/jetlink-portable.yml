@@ -2,7 +2,7 @@ name: Jetlink portable integration checks
 on:
   pull_request:
   push:
-    branches: [jetlink-integration]
+    branches: [bp-sunnypilot-jetlink, bp-7.0-jetlink]
 jobs:
   portable:
     runs-on: ubuntu-latest
