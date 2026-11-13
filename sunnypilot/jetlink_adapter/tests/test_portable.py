@@ -80,6 +80,20 @@ class TestAdapter(unittest.TestCase):
     self.assertAlmostEqual(action(None, None, 0, 0, 10, lambda c: 0.01).desiredCurvature, 0.03)
     self.assertEqual(action(None, None, 0, 0, 0.1, lambda c: 0.01).desiredCurvature, 0.02)
 
+  def test_bp7_frame_call_preserves_legacy_and_jetlink_apis(self):
+    for path in ('selfdrive/modeld/modeld.py', 'sunnypilot/modeld_v2/modeld.py'):
+      tree = ast.parse((ROOT / path).read_text())
+      call = next(n for n in ast.walk(tree) if isinstance(n, ast.Assign) and
+                  isinstance(n.value, ast.Call) and ast.unparse(n.value.func) == 'model.run')
+      code = compile(ast.Module(body=[call], type_ignores=[]), path, 'exec')
+      for attached in (False, True):
+        for dropped in (False, True):
+          received = []
+          model = SimpleNamespace(run=lambda *args: received.append(args[-1]))
+          exec(code, {'model': model, 'bufs': {}, 'transforms': {}, 'inputs': {},
+                      'jetlink_attached': attached, 'prepare_only': dropped})
+          self.assertIs(received[0], None if attached else dropped)
+
 
 class TestSelfdrivedIntegration(unittest.TestCase):
   """Execute the actual added event block with upstream's real SwapEvents."""

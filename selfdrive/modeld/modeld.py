@@ -193,6 +193,7 @@ def main(demo=False):
   small_model = model
   if jetlink_adapter.prepare(USBGPU):
     model = jetlink_adapter.attach(model, small_model, vipc_client_main.width, vipc_client_main.height)
+  jetlink_attached = model is not small_model
   # End BluePilot
   if not USBGPU:
     config_realtime_process(7, 54)
@@ -312,7 +313,11 @@ def main(demo=False):
     }
 
     mt1 = time.perf_counter()
-    model_output = model.run(bufs, transforms, inputs, prepare_only)
+    # BluePilot: Jetlink 0.9 takes a callback, BP 7 takes a prepare-only boolean.
+    model_output = model.run(bufs, transforms, inputs, None if jetlink_attached else prepare_only)
+    if prepare_only:
+      model_output = None
+    # End BluePilot
     # BluePilot: handover restarts frame-drop warmup.
     if jetlink_adapter.handed_over(model):
       run_count = 0
