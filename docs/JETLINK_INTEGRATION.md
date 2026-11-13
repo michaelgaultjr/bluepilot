@@ -1,116 +1,155 @@
-# BluePilot Jetlink integration — development only
+# BluePilot with Jetlink
 
-This is an uninstalled development port, not a road-validated build. Jetlink is off
-by default. No Ford vehicle controller, vehicle fingerprint, CAN safety limit,
-panda revision, or opendbc revision was changed.
+Both branches are published as **experimental source installation candidates**.
+They build on Linux and have working comma installers. Jetlink starts **off**.
+This port has not been installed or tested on a physical comma 4, Jetson, or car.
+
+**BP 7 validation issue:** its existing Ford CAN safety suite fails identically
+on the original BP 7 base and this Jetlink branch, including the angle-mode
+corroboration test. The port preserves that code; it does not resolve or waive
+those failures. These results do not establish that BP 7 with angle steering
+and experimental longitudinal control is safe to drive.
+
+## Choose a branch
+
+| Branch | Base | Installation URL |
+| --- | --- | --- |
+| `bp-7.0-jetlink` | BP 7, retaining its Ford extras | https://installer.comma.ai/michaelgaultjr/bp-7.0-jetlink |
+| `bp-sunnypilot-jetlink` | BluePilot's `bp-sunnypilot` (`bp-sp`) | https://installer.comma.ai/michaelgaultjr/bp-sunnypilot-jetlink |
+
+For the requested 2020 Corsair setup, `bp-7.0-jetlink` retains the BP 7 features.
+The alternate branch keeps its own upstream feature set. Neither branch changes
+Ford vehicle controllers, fingerprints, CAN safety limits, panda or opendbc
+revisions, or automatically selects angle steering or alpha longitudinal control.
+
+The repository remains `michaelgaultjr/bluepilot`. GitHub's
+`michaelgaultjr/openpilot` redirect lets the standard comma installer locate it.
+Do not create a separate repository at that alias without replacing the links.
+Both URLs were checked with comma 4 setup headers and returned ELF installers
+containing the expected repository and branch.
+
+## Install and set up while parked
+
+1. Save the current branch and settings, and keep the known-good upstream
+   installer available: https://installer.comma.ai/BluePilotDev/bp-7.0.
+2. Enter the chosen full installation URL in the comma's software installation
+   screen. This is a source install: allow the normal first-boot build and
+   downloads to finish. Keep the comma powered and online. Visiting the URL in
+   a desktop browser can show a device-only message.
+3. Confirm BluePilot starts normally with **Jetlink Off** before connecting the
+   external computer. Record the vehicle settings instead of assuming that
+   installation will preserve them.
+4. Set up the **Jetson Orin Nano Super Developer Kit (8 GB)** using the pinned
+   [Jetlink v0.9.0 Jetson guide](https://github.com/zoompilot/jetlink/blob/v0.9.0/docs/jetson.md).
+   That release documents JetPack 7.2.1 as tested; follow its hardware and power
+   requirements. Use separate power for the Jetson and comma, and a USB 3
+   **Jetson USB-A to comma USB-C data cable**. The comma cannot power the Jetson.
+5. On the Jetson, install the matching release:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/zoompilot/jetlink/v0.9.0/install.sh -o /tmp/jetlink-install.sh
+   bash /tmp/jetlink-install.sh --ref v0.9.0
+   ```
+
+   Choose power options matching the actual socket. A socket that turns off
+   after parking is switched power. The guide explains sleep, battery
+   protection, and when a fully powered-off Jetson needs a manual restart.
+6. Offroad, select **Settings > Models > Jetlink (Experimental) > USB** on the
+   comma. Enabling it disables ADB because they share the USB port.
+7. Connect the cable and allow the external model to download and prepare.
+   Choose it in the Jetlink web interface or host tools; BluePilot's normal
+   model selector still chooses the local model. Check the state in Models and
+   run `jetlink status` on the Jetson. This port does not reproduce Zoompilot's
+   home-button icon.
+8. Keep the host release and selected model fixed during validation. The client
+   pin does not freeze the remote model catalogue. `jetlink update` updates the
+   host, so review compatibility before using it.
+
+To stop using the integration, select **Jetlink Off** while parked and restart
+BluePilot. To roll back the entire port, reinstall the previously recorded
+known-good branch. Do not test unplugging or crashes on public roads.
+
+## Integration behavior
+
+- Adapted from Zoompilot and Jetlink's porting guide, with Jetlink v0.9.0 vendored
+  unchanged. License, metadata, guide, and 39 file checksums are retained under
+  `third_party/jetlink/`.
+- Both stock and Sunnypilot tinygrad runners retain the local model. External
+  promotion waits until cruise and MADS are disabled; paused MADS still counts
+  as enabled. Engagement is blocked for one second after promotion.
+- **Link loss during assistance triggers a latched soft-disable and takeover
+  alert.** This differs from Zoompilot's continuation behavior. The latch clears
+  only after cruise and MADS are both disabled. Availability of the local model
+  does not promise uninterrupted assistance.
+- Transition handling does not suppress ordinary communication/localization
+  errors while assistance is enabled. Genuine Chestnut retains its existing path.
+- The optional owner restarts after a crash. Missing/incompatible Jetlink gives
+  an offroad error when enabled and leaves the local path available. Automatic
+  shutdown waits at most 30 seconds for the host and blocks drive startup during
+  that wait. Reboot is not treated as host shutdown.
+- Both display layouts provide local, offroad-only Off/USB/iOS controls. Jetlink
+  parameters are not remotely writable through Sunnylink.
+- BP 7 needed compatibility work for its older model-call API, camera-warp
+  assets, schema, and navigation. Shared Sunnypilot ancestry was not sufficient
+  to copy the Zoompilot integration unchanged.
+
+## Validation on November 13, 2026
+
+Tests ran on Ubuntu 24.04 x86-64 with each branch's pinned dependencies and
+submodules. These are host tests, not ARM/QCOM device or vehicle validation.
+
+| Check | `bp-7.0-jetlink` | `bp-sunnypilot-jetlink` |
+| --- | --- | --- |
+| Full native Linux build | Passed | Passed |
+| Integration: native interfaces, both cameras, real local inference/reset, owner restart, cruise/MADS loss | 25 passed | 24 passed |
+| Existing Ford vehicle/control and cruise state tests | 60 passed, 15 subtests | Included below |
+| Existing MADS tests | 10 passed | Included below |
+| Existing Ford safety, vehicle, cruise and MADS suite | Ford safety failures below | 209 passed, 164 skipped, 9,137 subtests |
+| Both settings layouts: render, USB selection, ADB clearing, onroad lockout | Passed under Xvfb | Passed under Xvfb |
+| Edited Python lint/syntax, whitespace, vendored checksums | Passed | Passed |
+
+The unmodified Jetlink v0.9.0 `tests/openpilot`, owner, root, and gadget suites
+passed **917 tests and 200 subtests**, with 4 skips on Linux. Earlier
+Windows-only timing failures did not reproduce there; vendor code was not
+patched to obtain these results.
+
+The **BP 7 Ford safety suite is not passing**. The same isolated command on
+original base `773f7f1` and the Jetlink branch produced identical results:
+pytest reported **22,556 failures, 487 passes, 279 skips, and 1,930 passing
+subtests**. The same 50 test method names failed on both. The opendbc tree and
+panda revision are identical Git objects. A separate baseline checkout supplied
+original vehicle/safety code; both used the built common runtime libraries.
+This establishes that the observed failures predate the port, not that they are
+harmless.
+
+Reproduce after normal Linux dependency/submodule/LFS setup and build:
+
+```sh
+# BP 7; on bp-sunnypilot prefix the integration path with openpilot/
+python -m unittest discover -s sunnypilot/jetlink_adapter/tests -p 'test_*.py' -v
+
+# Ford safety, independently of application test fixtures
+cd opendbc_repo
+PYTHONPATH="$PWD:$PWD/.." python -m pytest --confcutdir=. -o addopts= -q opendbc/safety/tests/test_ford.py
+```
+
+Before driving, remaining validation includes comma 4 first boot and QCOM
+execution, the intended model on the Jetson, model replay, bench tests of
+unplug/crash/reconnect/lag/power/shutdown, alert timing and MADS behavior, thermal
+and frame-time measurements, and resolution/review of BP 7 safety failures.
+Controlled-course evaluation must use the actual Corsair and steering/
+longitudinal configuration. None of those device/road checks was performed here.
+AI assistance was used in authoring this port.
 
 ## Pinned sources
 
 | Component | Revision |
 | --- | --- |
-| BluePilot `bp-sunnypilot` (installation short name `bp-sp`) | `4e21f4974844725398af44b6cfd8d04907825904` |
-| Zoompilot `main`, adapter and Blendful bridge reference | `b51270b7b00a5b0a2b78c3acfdbca4be236ad255` |
-| Jetlink `v0.9.0`, vendored comma package | `9cfde98eec1d7cc714d800504944cf1a3944513d` |
+| BluePilot `bp-7.0` | `773f7f1dc27cd10d622576a5074de4fefe60da73` |
+| BluePilot `bp-sunnypilot` | `4e21f4974844725398af44b6cfd8d04907825904` |
+| Zoompilot adapter/Blendful reference | `b51270b7b00a5b0a2b78c3acfdbca4be236ad255` |
+| Jetlink `v0.9.0` | `9cfde98eec1d7cc714d800504944cf1a3944513d` |
 
-The Jetlink package under `jetlink/` is copied from that release, with line
-endings normalized. Its license, package metadata, README, and the release's
-porting guide are retained under `third_party/jetlink/`. The adapter and action
-bridge retain Zoompilot attribution. `third_party/jetlink/manifest.json` records
-the exact vendored package content. Upstream URLs:
-
-- https://github.com/BluePilotDev/bluepilot/tree/bp-sunnypilot
-- https://github.com/zoompilot/zoompilot/tree/b51270b7b00a5b0a2b78c3acfdbca4be236ad255
-- https://github.com/zoompilot/jetlink/blob/v0.9.0/docs/porting.md
-
-## Behavior and deliberate differences
-
-- Both stock and Sunnypilot tinygrad model runners wrap their existing small
-  model with Jetlink. The port does not replace either runner's normal path.
-- Actual Chestnut hardware retains its native path. A USB host cable is not
-  mistaken for Chestnut while Jetlink is enabled.
-- Jetlink's readiness state travels alongside each model message. Switching
-  and no-entry events use this state rather than a periodically written status
-  file. The readiness check includes ordinary engagement and MADS enabled,
-  including MADS paused, matching Zoompilot's adapter.
-- **Different from Zoompilot:** loss while either assistance mode is enabled
-  adds BluePilot's existing `bigModelFailed` soft-disable event. This is latched
-  until both cruise and MADS are disabled. The small model is available during
-  the transition; the port does not promise uninterrupted assistance.
-- Expected settling frames are forgiven only with neither assistance mode
-  enabled. Genuine communication/localization errors while engaged are not
-  suppressed by the Jetlink settling flag.
-- The owner process may restart after a crash. Missing or incompatible Jetlink
-  falls back through the adapter and reports an offroad error when enabled.
-- Automatic shutdown waits at most 30 seconds for Jetlink. Drive startup is
-  blocked during that wait. Reboot behavior is not changed to power off the host.
-- Both display layouts have a local, offroad-only Off/USB/iOS control. Enabling
-  Jetlink clears ADB; the ADB controls are unavailable while Jetlink is enabled.
-  The comma and host need separate power.
-- **External model choice belongs to the Jetlink app/server.** The BluePilot
-  Chestnut catalogue is deliberately not repurposed. There is no new Sunnylink
-  remote control or automatic catalogue migration. Pin the external model and
-  host release during validation; vendoring the client does not pin the host's
-  model catalogue.
-
-## Validation
-
-Local results, November 13, 2026:
-
-- Portable BluePilot integration tests: 17 passed.
-- Python lint on the edited integration files: passed.
-- Both model-runner contract checks from Jetlink: passed.
-- Jetlink's unmodified v0.9.0 event/hook/joining suites on Windows: 152 passed,
-  2 failed, 73 subtests passed. A diagnostic rerun using `perf_counter` as the
-  monotonic clock passed 153, with 1 failure still remaining. The remaining
-  failure is `RuntimeRecordTest.test_a_wake_while_a_record_is_written_is_not_lost`.
-  Its cause is unresolved; do not treat it as harmless or hide it. Reproduce on
-  Linux before approving this port. No upstream Jetlink code was changed to
-  make these tests pass.
-- Full native build, native integration tests, replay, UI rendering, USB timing,
-  and vehicle testing: not run. No usable Linux development distro or running
-  Docker engine was available in this workspace.
-
-Portable checks execute the actual added selfdrived event block with Jetlink's
-real event tracker, and check off/absent behavior, MADS, promotion/no-entry,
-failure latching, stale state, adapter fallback hooks, both model-runner seams,
-and the action bridge. They do not instantiate the real model GPU or controls.
-
-From the repository root:
-
-```sh
-python -m unittest discover -s openpilot/sunnypilot/jetlink_adapter/tests -p test_portable.py -v
-```
-
-After installing the normal Linux BluePilot development dependencies,
-initializing its pinned submodules, downloading LFS assets, and building native
-libraries and schema:
-
-```sh
-python -m unittest discover -s openpilot/sunnypilot/jetlink_adapter/tests -p test_native.py -v
-```
-
-The native suite must not be counted as passed without that environment.
-The initial Windows checkout has LFS pointers and uninitialized vehicle/runtime
-submodules. It is source for review, not an installable release artifact.
-
-## Gates before an installation candidate
-
-1. Full Linux/device build, compiled schema and params tests, adapter conformance,
-   process lifecycle tests, and existing BluePilot/Ford safety tests.
-2. Model replay for both runners and every intended small-model format, with
-   Jetlink disabled and enabled; compare baseline-disabled behavior and confirm
-   output formats, recurrent-state reset, calibration, and action timing.
-3. Bench tests on the actual comma and external host: cold start, unplug,
-   process crash, repeated reconnect, bad output, sustained lag, failed
-   preparation, sleep/wake, reboot, shutdown, and depleted/unstable power.
-4. UI review on the actual comma, takeover alert timing, complete MADS/cruise
-   state-machine traces, and no-entry timing around model transitions.
-5. Thermal soak with measured frame-time distribution and missed deadlines;
-   validate host cooling, power, model checksum, and USB cable.
-6. BluePilot/Jetlink maintainer review, then controlled-course evaluation for
-   the 2020 Corsair with the user's actual longitudinal-control configuration.
-
-Do not infer safety from compilation, the portable tests, or shared Sunnypilot
-ancestry. Preserve the installed known-good branch and settings before any
-future device work. No device installation, external publication, or road test
-was performed for this port. AI assistance was used in authoring this change.
+References: [porting guide](https://github.com/zoompilot/jetlink/blob/v0.9.0/docs/porting.md),
+[Zoompilot reference](https://github.com/zoompilot/zoompilot/tree/b51270b7b00a5b0a2b78c3acfdbca4be236ad255),
+[installer alias documentation](https://github.com/sunnypilot/openpilot-installer-generator/blob/main/README.md).

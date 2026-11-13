@@ -1,3 +1,13 @@
+## Jetlink integration fork
+
+This branch is an experimental Jetlink source install candidate. See the
+[installation and validation guide](docs/JETLINK_INTEGRATION.md) for both
+installers, Jetson setup, and unresolved upstream BP 7 Ford safety test failures.
+Physical device and road validation have not been performed.
+
+The upstream information below describes the base project; use the Jetlink
+guide for this fork.
+
 ![](https://user-images.githubusercontent.com/47793918/233812617-beab2e71-57b9-479e-8bff-c3931347ca40.png)
 
 ## 🌞 What is sunnypilot?
