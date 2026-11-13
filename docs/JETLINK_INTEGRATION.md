@@ -2,8 +2,9 @@
 
 Both branches are published as **experimental source installation candidates**.
 They build on Linux and have working comma installers. Jetlink starts **off**.
-The comma 4 installation is undergoing bench troubleshooting; the complete
-comma/Jetson connection and vehicle behavior have not yet been validated.
+Bench testing on a comma 4 and Jetson Orin Nano Super has confirmed USB 3
+connection, Light Speed 2 engine preparation, and external inference. Vehicle
+message validation is still in progress; road safety has not been established.
 
 **BP 7 validation issue:** its existing Ford CAN safety suite fails identically
 on the original BP 7 base and this Jetlink branch, including the angle-mode
@@ -92,6 +93,10 @@ known-good branch. Do not test unplugging or crashes on public roads.
   an offroad error when enabled and leaves the local path available. Automatic
   shutdown waits at most 30 seconds for the host and blocks drive startup during
   that wait. Reboot is not treated as host shutdown.
+- Jetlink borrows modeld's existing message snapshot for cruise/MADS checks.
+  It does not open another vehicle-state reader: the extra reader exhausted
+  BP 7's 15-reader limit and invalidated calibration/localization/planning.
+  Missing, stale, or invalid control data continues to block model promotion.
 - Both display layouts provide local, offroad-only Off/USB/iOS controls. Jetlink
   parameters are not remotely writable through Sunnylink.
 - BP 7 needed compatibility work for its older model-call API, camera-warp
@@ -110,6 +115,7 @@ submodules. These are host tests, not ARM/QCOM device or vehicle validation.
 | Existing Ford vehicle/control and cruise state tests | 60 passed, 15 subtests | Included below |
 | Existing MADS tests | 10 passed | Included below |
 | Existing Ford safety, vehicle, cruise and MADS suite | Ford safety failures below | 209 passed, 164 skipped, 9,137 subtests |
+| Shared reader: full subscriber pool, cruise/MADS gating, missing/stale/invalid data, both runners | 5 passed | 5 passed |
 | Connection display: unplugged/stale progress, waiting, connected, invalid progress | 5 passed | 5 passed |
 | Both settings layouts: render, USB selection, ADB clearing, onroad lockout | Passed under Xvfb | Passed under Xvfb |
 | Edited Python lint/syntax, whitespace, vendored checksums | Passed | Passed |
